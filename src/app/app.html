@@ -1,0 +1,415 @@
+<div class="app-shell">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-icon">⚡</span>
+      <span class="brand-text">TaskFlow</span>
+    </div>
+    <nav class="list-nav">
+      <p class="nav-label">MY LISTS</p>
+      <button
+        *ngFor="let list of lists"
+        class="list-btn"
+        [class.active]="list.id === activeListId"
+        [style.--list-color]="list.color"
+        (click)="switchList(list.id)"
+      >
+        <span class="list-icon">{{ list.icon }}</span>
+        <span class="list-name">{{ list.name }}</span>
+        <span class="list-count">{{ todos | listCount : list.id }}</span>
+        <button class="list-delete-btn"
+          (click)="$event.stopPropagation(); deleteList(list.id)">✕</button>
+      </button>
+    </nav>
+    <button class="add-list-btn" (click)="openNewListModal()">
+      <span>＋</span> New List
+    </button>
+  </aside>
+
+  <main class="main-content">
+
+    <header class="main-header">
+      <div class="header-left">
+        <span class="header-list-icon" [style.color]="activeList?.color">
+          {{ activeList?.icon }}
+        </span>
+        <div class="header-titles">
+          <span class="header-app-name">⚡ TaskFlow</span>
+          <h1 class="header-title">{{ activeList?.name }}</h1>
+          <span class="header-subtitle">Track tasks · Stay focused</span>
+        </div>
+        <span class="task-count-badge">{{ taskCounts.all }} tasks</span>
+      </div>
+      <div class="header-right">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" placeholder="Search tasks..."
+            [(ngModel)]="searchQueryValue"
+            class="search-input" />
+        </div>
+        <select [value]="sortByValue"
+          (change)="setSortBy($any($event.target).value)"
+          class="sort-select">
+          <option value="date">📅 By Date</option>
+          <option value="priority">🔥 By Priority</option>
+          <option value="az">🔤 A–Z</option>
+        </select>
+        <button class="btn-add-task" (click)="openAddModal()">＋ Add Task</button>
+      </div>
+    </header>
+
+    <div class="progress-section">
+      <div class="progress-label">
+        <span>Progress</span>
+        <span>{{ progressPercent }}%</span>
+      </div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill"
+          [style.width.%]="progressPercent"
+          [style.background]="activeList?.color"></div>
+      </div>
+    </div>
+
+    <div class="filter-tabs">
+      <button class="tab-btn" [class.active]="activeTabValue === 'all'"
+        (click)="setActiveTab('all')">
+        All <span class="tab-count">{{ taskCounts.all }}</span>
+      </button>
+      <button class="tab-btn" [class.active]="activeTabValue === 'active'"
+        (click)="setActiveTab('active')">
+        Active <span class="tab-count">{{ taskCounts.active }}</span>
+      </button>
+      <button class="tab-btn" [class.active]="activeTabValue === 'inprogress'"
+        (click)="setActiveTab('inprogress')">
+        In Progress <span class="tab-count">{{ taskCounts.inprogress }}</span>
+      </button>
+      <button class="tab-btn" [class.active]="activeTabValue === 'done'"
+        (click)="setActiveTab('done')">
+        Done <span class="tab-count">{{ taskCounts.done }}</span>
+      </button>
+    </div>
+
+    <div class="task-list">
+
+      <div *ngIf="filteredTodos().length === 0" class="empty-state">
+        <div class="empty-icon">📭</div>
+        <p>No tasks here. Add one!</p>
+      </div>
+
+      <div *ngFor="let todo of filteredTodos()"
+        class="task-card"
+        [class.pinned]="todo.pinned"
+        [class.overdue]="isOverdue(todo)"
+        [class.due-today]="isDueToday(todo)"
+        [class.status-done]="todo.status === 'done'"
+      >
+        <div class="card-top">
+          <button class="done-check"
+            [class.checked]="todo.status === 'done'"
+            (click)="toggleDone(todo)">
+            <span *ngIf="todo.status === 'done'">✓</span>
+          </button>
+          <span class="task-title"
+            [class.strikethrough]="todo.status === 'done'">
+            {{ todo.title }}
+          </span>
+          <span *ngIf="todo.pinned" class="pin-badge">📌</span>
+          <div class="card-actions">
+            <button class="action-btn" (click)="togglePin(todo)">📌</button>
+            <button class="action-btn" (click)="openEdit(todo)">✏️</button>
+            <button class="action-btn danger"
+              (click)="deleteTask(todo.id)">🗑</button>
+          </div>
+        </div>
+
+        <div class="card-badges">
+          <span class="badge"
+            [ngClass]="'priority-' + todo.priority.toLowerCase()">
+            {{ todo.priority }}
+          </span>
+          <span class="badge badge-category">{{ todo.category }}</span>
+          <span class="badge" [ngClass]="'status-' + todo.status">
+            {{ todo.status === 'inprogress' ? 'In Progress' : (todo.status | titlecase) }}
+          </span>
+          <span *ngIf="todo.dueDate" class="badge badge-date"
+            [class.badge-overdue]="isOverdue(todo)"
+            [class.badge-today]="isDueToday(todo)">
+            {{ dueDateLabel(todo) }}
+          </span>
+        </div>
+
+        <p *ngIf="todo.notes" class="task-notes">{{ todo.notes }}</p>
+
+        <div *ngIf="todo.subtasks.length > 0" class="subtasks-section">
+          <div class="subtask-progress-row">
+            <span class="subtask-label">
+              {{ todo.subtasks | doneCount }} / {{ todo.subtasks.length }} subtasks
+            </span>
+            <div class="subtask-bar-track">
+              <div class="subtask-bar-fill"
+                [style.width.%]="subtaskProgress(todo)"
+                [style.background]="activeList?.color"></div>
+            </div>
+          </div>
+          <label *ngFor="let sub of todo.subtasks"
+            class="subtask-item" [class.sub-done]="sub.done">
+            <input type="checkbox" [checked]="sub.done"
+              (change)="toggleSubtask(todo, sub)" />
+            <span>{{ sub.title }}</span>
+          </label>
+        </div>
+
+        <div class="status-switcher">
+          <button *ngFor="let s of ['active', 'inprogress', 'done']"
+            class="status-pill"
+            [class.active-pill]="todo.status === s"
+            (click)="setStatus(todo, $any(s))">
+            {{ s === 'inprogress' ? 'In Progress' : (s | titlecase) }}
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- MODAL: Add Task -->
+<div class="modal-overlay" *ngIf="showAddModal" (click)="showAddModal = false">
+  <div class="modal-box" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Add New Task</h2>
+      <button class="modal-close" (click)="showAddModal = false">✕</button>
+    </div>
+    <form [formGroup]="addTaskForm" (ngSubmit)="addTask()">
+      <div class="modal-body">
+        <label class="form-label">Task Title *</label>
+        <input class="form-input" type="text"
+          placeholder="What needs to be done?"
+          formControlName="title" />
+        <small *ngIf="addTaskForm.get('title')?.invalid && addTaskForm.get('title')?.touched"
+          style="color:#ef4444;font-size:11px;">Title is required!</small>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Priority</label>
+            <select class="form-input" formControlName="priority">
+              <option value="High">🔴 High</option>
+              <option value="Medium">🟡 Medium</option>
+              <option value="Low">🟢 Low</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select class="form-input" formControlName="category">
+              <option value="Work">💼 Work</option>
+              <option value="Personal">🏠 Personal</option>
+              <option value="Study">🎓 Study</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Due Date</label>
+            <input class="form-input" type="date" formControlName="dueDate" />
+          </div>
+        </div>
+
+        <label class="form-label">Notes (optional)</label>
+        <textarea class="form-input form-textarea"
+          placeholder="Add a description..."
+          formControlName="notes" rows="3"></textarea>
+
+        <label class="form-label">Subtasks</label>
+        <div class="subtask-input-row">
+          <input class="form-input" type="text"
+            placeholder="Add a subtask..."
+            [(ngModel)]="newSubtaskText"
+            [ngModelOptions]="{standalone: true}"
+            (keyup.enter)="addNewSubtaskToForm()" />
+          <button type="button" class="btn-add-sub"
+            (click)="addNewSubtaskToForm()">＋</button>
+        </div>
+        <div class="subtask-list-preview">
+          <div *ngFor="let sub of newSubtasks" class="sub-preview-item">
+            <span>☐ {{ sub.title }}</span>
+            <button type="button" (click)="removeNewSubtask(sub.id)">✕</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-cancel"
+          (click)="showAddModal = false">Cancel</button>
+        <button type="submit" class="btn-save"
+          [disabled]="addTaskForm.invalid">Add Task</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Edit Task -->
+<div class="modal-overlay" *ngIf="showEditModal && editTodo" (click)="cancelEdit()">
+  <div class="modal-box" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Edit Task</h2>
+      <button class="modal-close" (click)="cancelEdit()">✕</button>
+    </div>
+    <form [formGroup]="editTaskForm" (ngSubmit)="saveEdit()">
+      <div class="modal-body">
+        <label class="form-label">Task Title *</label>
+        <input class="form-input" type="text" formControlName="title" />
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Priority</label>
+            <select class="form-input" formControlName="priority">
+              <option value="High">🔴 High</option>
+              <option value="Medium">🟡 Medium</option>
+              <option value="Low">🟢 Low</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select class="form-input" formControlName="category">
+              <option value="Work">💼 Work</option>
+              <option value="Personal">🏠 Personal</option>
+              <option value="Study">🎓 Study</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Due Date</label>
+            <input class="form-input" type="date" formControlName="dueDate" />
+          </div>
+        </div>
+
+        <label class="form-label">Notes</label>
+        <textarea class="form-input form-textarea"
+          formControlName="notes" rows="3"></textarea>
+
+        <label class="form-label">Subtasks</label>
+        <div class="subtask-input-row">
+          <input class="form-input" type="text"
+            placeholder="Add a subtask..."
+            [(ngModel)]="editSubtaskText"
+            [ngModelOptions]="{standalone: true}"
+            (keyup.enter)="addSubtaskToEdit()" />
+          <button type="button" class="btn-add-sub"
+            (click)="addSubtaskToEdit()">＋</button>
+        </div>
+        <div class="subtask-list-preview">
+          <div *ngFor="let sub of editTodo!.subtasks" class="sub-preview-item">
+            <label>
+              <input type="checkbox"
+                [(ngModel)]="sub.done"
+                [ngModelOptions]="{standalone: true}" />
+              <span [class.strikethrough]="sub.done">{{ sub.title }}</span>
+            </label>
+            <button type="button"
+              (click)="removeSubtaskFromEdit(sub.id)">✕</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-cancel"
+          (click)="cancelEdit()">Cancel</button>
+        <button type="submit" class="btn-save"
+          [disabled]="editTaskForm.invalid">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: New List -->
+<div class="modal-overlay" *ngIf="showNewListModal"
+  (click)="showNewListModal = false">
+  <div class="modal-box modal-small" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>New List</h2>
+      <button class="modal-close"
+        (click)="showNewListModal = false">✕</button>
+    </div>
+    <form [formGroup]="newListForm" (ngSubmit)="createList()">
+      <div class="modal-body">
+        <label class="form-label">List Name *</label>
+        <input class="form-input" type="text"
+          placeholder="e.g. Shopping, Fitness..."
+          formControlName="name" />
+
+        <label class="form-label">Choose Icon</label>
+        <div class="icon-picker">
+          <button type="button"
+            *ngFor="let icon of availableIcons"
+            class="icon-btn"
+            [class.selected]="newListForm.get('icon')?.value === icon"
+            (click)="newListForm.patchValue({icon: icon})">
+            {{ icon }}
+          </button>
+        </div>
+
+        <label class="form-label">Choose Color</label>
+        <div class="color-picker">
+          <button type="button"
+            *ngFor="let color of availableColors"
+            class="color-btn"
+            [style.background]="color"
+            [class.selected]="newListForm.get('color')?.value === color"
+            (click)="newListForm.patchValue({color: color})">
+          </button>
+        </div>
+
+        <div class="list-preview"
+          [style.border-color]="newListForm.get('color')?.value">
+          <span>{{ newListForm.get('icon')?.value }}</span>
+          <span [style.color]="newListForm.get('color')?.value">
+            {{ newListForm.get('name')?.value || 'List Name' }}
+          </span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-cancel"
+          (click)="showNewListModal = false">Cancel</button>
+        <button type="submit" class="btn-save"
+          [disabled]="newListForm.invalid">Create List</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- BOTTOM NAV — Mobile Only -->
+<nav class="bottom-nav">
+  <button class="bottom-nav-item"
+    [class.active]="activeListId === lists[0]?.id"
+    (click)="switchList(lists[0]?.id || '')">
+    <span class="nav-icon-bg">
+      <span class="nav-icon">{{ lists[0]?.icon || '🏠' }}</span>
+    </span>
+    <span>{{ lists[0]?.name || 'List 1' }}</span>
+  </button>
+
+  <button class="bottom-nav-item"
+    [class.active]="activeListId === lists[1]?.id"
+    (click)="switchList(lists[1]?.id || '')">
+    <span class="nav-icon-bg">
+      <span class="nav-icon">{{ lists[1]?.icon || '💼' }}</span>
+    </span>
+    <span>{{ lists[1]?.name || 'List 2' }}</span>
+  </button>
+
+  <button class="bottom-nav-fab" (click)="openAddModal()">＋</button>
+
+  <button class="bottom-nav-item"
+    [class.active]="activeListId === lists[2]?.id"
+    (click)="switchList(lists[2]?.id || '')">
+    <span class="nav-icon-bg">
+      <span class="nav-icon">{{ lists[2]?.icon || '🎓' }}</span>
+    </span>
+    <span>{{ lists[2]?.name || 'List 3' }}</span>
+  </button>
+
+  <button class="bottom-nav-item"
+    [class.active]="activeListId === lists[3]?.id"
+    (click)="switchList(lists[3]?.id || '')">
+    <span class="nav-icon-bg">
+      <span class="nav-icon">{{ lists[3]?.icon || '📋' }}</span>
+    </span>
+    <span>{{ lists[3]?.name || 'More' }}</span>
+  </button>
+</nav>
